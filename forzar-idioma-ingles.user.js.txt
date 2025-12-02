@@ -1,0 +1,55 @@
+// ==UserScript==
+// @name         Forzar Idioma Inglés
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  Mantiene siempre seleccionado el idioma inglés en sitios web
+// @author       TuNombre
+// @match        *://*kolotibablo.com/*
+// @icon         https://cdn-icons-png.freepik.com/512/15771/15771802.png
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // Función para verificar y forzar el idioma inglés
+    function forzarIngles() {
+        // Buscar el elemento seleccionado actual
+        const selectedLang = document.querySelector('.selected.flag');
+
+        // Si no es inglés, cambiarlo
+        if (selectedLang && !selectedLang.classList.contains('en')) {
+            // Buscar la opción de inglés
+            const englishOption = document.querySelector('.flag.en');
+
+            if (englishOption) {
+                // Simular clic en la opción de inglés
+                englishOption.click();
+            }
+        }
+    }
+
+    // Ejecutar la función cuando la página esté cargada
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', forzarIngles);
+    } else {
+        forzarIngles();
+    }
+
+    // Observar cambios en el DOM para detectar cambios dinámicos de idioma
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' || mutation.type === 'attributes') {
+                forzarIngles();
+            }
+        });
+    });
+
+    // Configurar y iniciar el observador
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class']
+    });
+})();
