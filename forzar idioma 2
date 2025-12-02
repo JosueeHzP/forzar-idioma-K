@@ -1,84 +1,429 @@
 // ==UserScript==
-// @name         Forzar Inglés Simple
+// @name         Forzar Inglés - Kolotibablo (Siempre Activo)
 // @namespace    http://tampermonkey.net/
-// @version      1.2
-// @description  Cambia a inglés en kolotibablo.com
+// @version      3.0
+// @description  Mantiene inglés activo permanentemente, detecta cambios en tiempo real
 // @author       TuNombre
 // @match        *://*kolotibablo.com/*
 // @grant        none
+// @run-at       document-start
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    function cambiarAingles() {
-        console.log('Buscando opción de inglés...');
+    // Configuración
+    const CONFIG = {
+        debug: true, // Cambia a false para menos mensajes en consola
+        intervaloVerificacion: 500, // Milisegundos entre verificaciones
+        maxReintentos: 50, // Máximo de intentos de cambio
+        selectoresPrioridad: [
+            // Selectores específicos de kolotibablo (si los conoces)
+            '.language-selector',
+            '.lang-switcher',
+            '.flag-selector',
+            // Selectores generales
+            '[class*="lang"]',
+            '[class*="language"]',
+            '[class*="flag"]',
+            'select',
+            'a[href*="lang"]',
+            'a[href*="language"]'
+        ]
+    };
+
+    // Variables de estado
+    let ultimoIdioma = 'en';
+    let contadorIntentos = 0;
+    let intervaloActivo = null;
+
+    // Función de log condicional
+    function log(mensaje, tipo = 'info') {
+        if (CONFIG.debug) {
+            const prefix = tipo === 'error' ? '❌' : tipo === 'success' ? '✅' : 'ℹ️';
+            console.log(`${prefix} [ForzarInglés] ${mensaje}`);
+        }
+    }
+
+    // Detectar el idioma actual
+    function detectarIdiomaActual() {
+        // Método 1: Buscar elementos activos/seleccionados
+        const elementosActivos = document.querySelectorAll('.active, .selected, .current');
         
-        // 1. Buscar por texto
-        const elementos = document.querySelectorAll('a, button, span, div, li');
-        for (const elemento of elementos) {
+        for (const elemento of elementosActivos) {
             const texto = elemento.textContent.toLowerCase().trim();
+            const clases = elemento.className.toLowerCase();
             
-            // Buscar "English" o "EN"
-            if (texto === 'english' || texto === 'en' || texto === 'eng') {
-                console.log('Encontrado:', elemento);
-                
-                // Si no está seleccionado, hacer clic
-                if (!elemento.classList.contains('active') && 
-                    !elemento.classList.contains('selected')) {
-                    elemento.click();
-                    console.log('¡Idioma cambiado a inglés!');
-                    return true;
-                }
+            if (texto.includes('español') || texto.includes('spanish') || 
+                texto.includes('es') || clases.includes('es')) {
+                return 'es';
+            }
+            if (texto.includes('english') || texto.includes('ingl') || 
+                texto.includes('en') || clases.includes('en')) {
+                return 'en';
             }
         }
         
-        // 2. Buscar imágenes de bandera UK/US
+        // Método 2: Buscar en imágenes de bandera
         const imagenes = document.querySelectorAll('img');
         for (const img of imagenes) {
             const src = img.src.toLowerCase();
             const alt = img.alt.toLowerCase();
             
-            if (src.includes('uk') || src.includes('us') || src.includes('gb') || 
-                alt.includes('english') || alt.includes('ingl')) {
+            if ((src.includes('es') || alt.includes('español') || alt.includes('spanish')) &&
+                !src.includes('en') && !alt.includes('english')) {
+                return 'es';
+            }
+        }
+        
+        // Método 3: Buscar en URL
+        const url = window.location.href.toLowerCase();
+        if (url.includes('lang=es') || url.includes('language=es') || 
+            url.includes('/es/') || url.includes('?es')) {
+            return 'es';
+        }
+        
+        return 'desconocido';
+    }
+
+    // Buscar opción de inglés
+    function encontrarOpcionIngles() {
+        // Estrategia 1: Buscar por texto
+        const elementosTexto = document.querySelectorAll('a, button, span, div, li, option');
+        
+        for (const elemento of elementosTexto) {
+            const texto = elemento.textContent.toLowerCase().trim();
+            
+            if (texto === 'english' || texto === 'en' || texto === 'eng' || 
+                texto.includes('english') || texto.includes('ingl')) {
                 
-                console.log('Bandera inglesa encontrada:', img);
-                
-                if (!img.closest('.active') && !img.closest('.selected')) {
-                    img.click();
-                    console.log('¡Bandera de inglés clickeada!');
-                    return true;
+                // Verificar que no sea un elemento deshabilitado o activo
+                if (!elemento.disabled && 
+                    !elemento.classList.contains('active') && 
+                    !elemento.classList.contains('selected') &&
+                    !elemento.closest('.active') &&
+                    !elemento.closest('.selected')) {
+                    
+                    log(`Opción inglés encontrada por texto: "${texto}"`);
+                    return elemento;
                 }
             }
         }
         
-        console.log('No se encontró opción de inglés visible');
+        // Estrategia 2: Buscar por atributos específicos
+        for (const selector of CONFIG.selectoresPrioridad) {
+            try {
+                const elementos = document.querySelectorAll(selector);
+                for (const elemento of elementos) {
+                    // Verificar si parece una opción de inglés
+                    const valor = elemento.value || '';
+                    const href = elemento.href || '';
+                    const clase = elemento.className || '';
+                    
+                    if (valor.includes('en') || href.includes('lang=en') || 
+                        href.includes('language=en') || clase.includes('en') ||
+                        elemento.getAttribute('data-lang') === 'en') {
+                        
+                        if (!elemento.disabled && 
+                            !elemento.classList.contains('active') && 
+                            !elemento.classList.contains('selected')) {
+                            
+                            log(`Opción inglés encontrada por selector: ${selector}`);
+                            return elemento;
+                        }
+                    }
+                }
+            } catch (e) {
+                // Ignorar errores de selectores
+            }
+        }
+        
+        // Estrategia 3: Buscar imágenes de bandera inglesa
+        const imagenes = document.querySelectorAll('img[src*="uk"], img[src*="us"], img[src*="gb"], img[alt*="english"], img[alt*="ingl"]');
+        
+        for (const img of imagenes) {
+            if (!img.closest('.active') && !img.closest('.selected')) {
+                log('Bandera inglesa encontrada');
+                return img;
+            }
+        }
+        
+        return null;
+    }
+
+    // Cambiar a inglés
+    function cambiarAingles() {
+        if (contadorIntentos >= CONFIG.maxReintentos) {
+            log('Máximo de intentos alcanzado', 'error');
+            return false;
+        }
+        
+        contadorIntentos++;
+        
+        // Detectar idioma actual
+        const idiomaActual = detectarIdiomaActual();
+        log(`Idioma detectado: ${idiomaActual} (Intento: ${contadorIntentos})`);
+        
+        // Si ya está en inglés, todo bien
+        if (idiomaActual === 'en') {
+            if (ultimoIdioma !== 'en') {
+                log('¡Idioma ya está en inglés!', 'success');
+                ultimoIdioma = 'en';
+            }
+            return true;
+        }
+        
+        // Buscar y activar opción de inglés
+        const opcionIngles = encontrarOpcionIngles();
+        
+        if (opcionIngles) {
+            try {
+                log('Activando opción de inglés...');
+                
+                // Diferentes métodos según el tipo de elemento
+                if (opcionIngles.tagName === 'SELECT') {
+                    // Para select elements
+                    opcionIngles.value = 'en';
+                    opcionIngles.dispatchEvent(new Event('change', { bubbles: true }));
+                    opcionIngles.dispatchEvent(new Event('input', { bubbles: true }));
+                } else if (opcionIngles.tagName === 'OPTION') {
+                    // Para option dentro de select
+                    const selectPadre = opcionIngles.closest('select');
+                    if (selectPadre) {
+                        selectPadre.value = opcionIngles.value;
+                        selectPadre.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                } else if (opcionIngles.tagName === 'A' || opcionIngles.tagName === 'BUTTON' || 
+                          opcionIngles.tagName === 'IMG' || opcionIngles.tagName === 'SPAN' || 
+                          opcionIngles.tagName === 'DIV' || opcionIngles.tagName === 'LI') {
+                    // Para otros elementos clickeables
+                    opcionIngles.click();
+                }
+                
+                // También simular eventos táctiles para dispositivos móviles
+                opcionIngles.dispatchEvent(new Event('touchstart', { bubbles: true }));
+                opcionIngles.dispatchEvent(new Event('touchend', { bubbles: true }));
+                
+                // Forzar estilo visual si es necesario
+                if (opcionIngles.style) {
+                    const originalBackground = opcionIngles.style.backgroundColor;
+                    opcionIngles.style.backgroundColor = '#4CAF50';
+                    setTimeout(() => {
+                        if (opcionIngles.style) {
+                            opcionIngles.style.backgroundColor = originalBackground || '';
+                        }
+                    }, 300);
+                }
+                
+                log('✅ Idioma cambiado a inglés exitosamente', 'success');
+                ultimoIdioma = 'en';
+                
+                // Resetear contador en éxito
+                contadorIntentos = 0;
+                return true;
+                
+            } catch (error) {
+                log(`Error al cambiar idioma: ${error.message}`, 'error');
+            }
+        } else {
+            log('No se encontró opción de inglés en este momento');
+        }
+        
         return false;
     }
 
-    // Intentar varias veces
-    function intentarCambiarIdioma() {
-        let intentos = 0;
-        const maxIntentos = 10;
-        
-        const intervalo = setInterval(() => {
-            intentos++;
-            console.log(`Intento ${intentos} de cambiar a inglés`);
+    // Observador de mutaciones mejorado
+    function iniciarObservador() {
+        const observer = new MutationObserver(function(mutations) {
+            let debeVerificar = false;
             
-            if (cambiarAingles()) {
-                clearInterval(intervalo);
-                console.log('Idioma inglés establecido exitosamente');
-            } else if (intentos >= maxIntentos) {
-                clearInterval(intervalo);
-                console.log('Máximo de intentos alcanzado');
+            for (const mutation of mutations) {
+                // Si se agregaron nodos
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    debeVerificar = true;
+                    break;
+                }
+                
+                // Si cambiaron atributos de clase o estilo
+                if (mutation.type === 'attributes' && 
+                    (mutation.attributeName === 'class' || 
+                     mutation.attributeName === 'style' ||
+                     mutation.attributeName === 'src' ||
+                     mutation.attributeName === 'href')) {
+                    
+                    const elemento = mutation.target;
+                    const tagName = elemento.tagName.toLowerCase();
+                    
+                    // Verificar si es un elemento relevante
+                    if (tagName === 'select' || tagName === 'a' || tagName === 'button' || 
+                        tagName === 'img' || tagName === 'span' || tagName === 'div' ||
+                        elemento.className.includes('lang') || elemento.className.includes('flag')) {
+                        
+                        debeVerificar = true;
+                        break;
+                    }
+                }
+                
+                // Si cambió el texto
+                if (mutation.type === 'characterData') {
+                    const texto = mutation.target.textContent.toLowerCase();
+                    if (texto.includes('english') || texto.includes('español') || 
+                        texto.includes('spanish') || texto === 'en' || texto === 'es') {
+                        debeVerificar = true;
+                        break;
+                    }
+                }
             }
-        }, 1000);
+            
+            if (debeVerificar) {
+                log('Cambios detectados en el DOM, verificando idioma...');
+                setTimeout(() => cambiarAingles(), 100);
+            }
+        });
+        
+        // Observar todo el documento
+        observer.observe(document.documentElement || document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style', 'src', 'href', 'value', 'selected', 'checked'],
+            characterData: true,
+            characterDataOldValue: true
+        });
+        
+        return observer;
     }
 
-    // Iniciar
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', intentarCambiarIdioma);
-    } else {
-        intentarCambiarIdioma();
+    // Verificación periódica
+    function iniciarVerificacionPeriodica() {
+        if (intervaloActivo) {
+            clearInterval(intervaloActivo);
+        }
+        
+        intervaloActivo = setInterval(() => {
+            cambiarAingles();
+        }, CONFIG.intervaloVerificacion);
+        
+        log(`Verificación periódica iniciada (cada ${CONFIG.intervaloVerificacion}ms)`);
     }
+
+    // Interceptar clics en enlaces que puedan cambiar idioma
+    function interceptarClics() {
+        document.addEventListener('click', function(event) {
+            const target = event.target;
+            const elemento = target.closest('a, button, [role="button"]');
+            
+            if (elemento) {
+                const href = elemento.href || '';
+                const texto = elemento.textContent.toLowerCase();
+                const clase = elemento.className.toLowerCase();
+                
+                // Verificar si es un clic que podría cambiar el idioma
+                if (href.includes('lang=es') || href.includes('language=es') || 
+                    texto.includes('español') || texto.includes('spanish') ||
+                    clase.includes('es_') || clase.includes('lang-es')) {
+                    
+                    log('⚠️ Intento de cambio a español detectado, bloqueando...');
+                    
+                    // Prevenir el cambio
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.stopImmediatePropagation();
+                    
+                    // Buscar y activar inglés inmediatamente
+                    setTimeout(() => cambiarAingles(), 50);
+                    
+                    return false;
+                }
+            }
+        }, true); // Usar captura para interceptar temprano
+    }
+
+    // Función para forzar inglés manualmente (útil para debugging)
+    function forzarInglesManual() {
+        log('Activación manual solicitada');
+        contadorIntentos = 0;
+        return cambiarAingles();
+    }
+
+    // Inicialización
+    function iniciar() {
+        log('=== Script Forzar Inglés Iniciado ===');
+        
+        // Ejecutar inmediatamente
+        cambiarAingles();
+        
+        // Ejecutar después de un breve retraso
+        setTimeout(() => cambiarAingles(), 500);
+        setTimeout(() => cambiarAingles(), 2000);
+        
+        // Iniciar observador de mutaciones
+        iniciarObservador();
+        
+        // Iniciar verificación periódica
+        iniciarVerificacionPeriodica();
+        
+        // Interceptar clics
+        interceptarClics();
+        
+        // Exponer función manual
+        window.forzarInglesAhora = forzarInglesManual;
+        
+        log('Script completamente activado');
+        
+        // Notificación visual opcional
+        mostrarNotificacion('Idioma inglés activado', 3000);
+    }
+
+    // Función para mostrar notificaciones
+    function mostrarNotificacion(mensaje, duracion = 2000) {
+        const notificacion = document.createElement('div');
+        notificacion.textContent = mensaje;
+        notificacion.style.cssText = `
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 99999;
+            font-weight: bold;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            font-family: Arial, sans-serif;
+            opacity: 0.9;
+        `;
+        
+        document.body.appendChild(notificacion);
+        
+        setTimeout(() => {
+            if (notificacion.parentNode) {
+                notificacion.style.opacity = '0';
+                notificacion.style.transition = 'opacity 0.5s';
+                setTimeout(() => {
+                    if (notificacion.parentNode) {
+                        notificacion.parentNode.removeChild(notificacion);
+                    }
+                }, 500);
+            }
+        }, duracion);
+    }
+
+    // Iniciar inmediatamente
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', iniciar);
+    } else {
+        iniciar();
+    }
+
+    // También ejecutar cuando la página esté completamente cargada
+    window.addEventListener('load', function() {
+        setTimeout(() => cambiarAingles(), 1000);
+    });
+
+    // Capturar errores de carga de recursos
+    window.addEventListener('error', function() {
+        setTimeout(() => cambiarAingles(), 500);
+    });
+
 })();
