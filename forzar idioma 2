@@ -1,57 +1,84 @@
-{
 // ==UserScript==
-// @name         Forzar Idioma Inglés
+// @name         Forzar Inglés Simple
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  Mantiene siempre seleccionado el idioma inglés en sitios web
+// @version      1.2
+// @description  Cambia a inglés en kolotibablo.com
 // @author       TuNombre
 // @match        *://*kolotibablo.com/*
-// @icon         https://cdn-icons-png.freepik.com/512/15771/15771802.png
 // @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // Función para verificar y forzar el idioma inglés
-    function forzarIngles() {
-        // Buscar el elemento seleccionado actual
-        const selectedLang = document.querySelector('.selected.flag');
-
-        // Si no es inglés, cambiarlo
-        if (selectedLang && !selectedLang.classList.contains('en')) {
-            // Buscar la opción de inglés
-            const englishOption = document.querySelector('.flag.en');
-
-            if (englishOption) {
-                // Simular clic en la opción de inglés
-                englishOption.click();
+    function cambiarAingles() {
+        console.log('Buscando opción de inglés...');
+        
+        // 1. Buscar por texto
+        const elementos = document.querySelectorAll('a, button, span, div, li');
+        for (const elemento of elementos) {
+            const texto = elemento.textContent.toLowerCase().trim();
+            
+            // Buscar "English" o "EN"
+            if (texto === 'english' || texto === 'en' || texto === 'eng') {
+                console.log('Encontrado:', elemento);
+                
+                // Si no está seleccionado, hacer clic
+                if (!elemento.classList.contains('active') && 
+                    !elemento.classList.contains('selected')) {
+                    elemento.click();
+                    console.log('¡Idioma cambiado a inglés!');
+                    return true;
+                }
             }
         }
-    }
-
-    // Ejecutar la función cuando la página esté cargada
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', forzarIngles);
-    } else {
-        forzarIngles();
-    }
-
-    // Observar cambios en el DOM para detectar cambios dinámicos de idioma
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList' || mutation.type === 'attributes') {
-                forzarIngles();
+        
+        // 2. Buscar imágenes de bandera UK/US
+        const imagenes = document.querySelectorAll('img');
+        for (const img of imagenes) {
+            const src = img.src.toLowerCase();
+            const alt = img.alt.toLowerCase();
+            
+            if (src.includes('uk') || src.includes('us') || src.includes('gb') || 
+                alt.includes('english') || alt.includes('ingl')) {
+                
+                console.log('Bandera inglesa encontrada:', img);
+                
+                if (!img.closest('.active') && !img.closest('.selected')) {
+                    img.click();
+                    console.log('¡Bandera de inglés clickeada!');
+                    return true;
+                }
             }
-        });
-    });
+        }
+        
+        console.log('No se encontró opción de inglés visible');
+        return false;
+    }
 
-    // Configurar y iniciar el observador
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class']
-    });
+    // Intentar varias veces
+    function intentarCambiarIdioma() {
+        let intentos = 0;
+        const maxIntentos = 10;
+        
+        const intervalo = setInterval(() => {
+            intentos++;
+            console.log(`Intento ${intentos} de cambiar a inglés`);
+            
+            if (cambiarAingles()) {
+                clearInterval(intervalo);
+                console.log('Idioma inglés establecido exitosamente');
+            } else if (intentos >= maxIntentos) {
+                clearInterval(intervalo);
+                console.log('Máximo de intentos alcanzado');
+            }
+        }, 1000);
+    }
+
+    // Iniciar
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', intentarCambiarIdioma);
+    } else {
+        intentarCambiarIdioma();
+    }
 })();
-}
